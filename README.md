@@ -1,3 +1,5 @@
+[![CI Pipeline](https://github.com/josiah1chuku/CAP5626-Alzheimer-MRI-Classification/actions/workflows/pipeline.yml/badge.svg)](https://github.com/josiah1chuku/CAP5626-Alzheimer-MRI-Classification/actions/workflows/pipeline.yml)
+
 # CAP5626 - Deep Learning for Five-Class Alzheimer's Disease Classification
 ## Florida A&M University - Spring 2026
 ### Student: [Josiah Chuku] | [josiah1.chuku@famu.edu]
