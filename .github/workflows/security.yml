@@ -1,0 +1,131 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday 6AM
+
+jobs:
+  # ── Job 1: Dependency vulnerability scan ──────────────────
+  dependency-scan:
+    runs-on: ubuntu-latest
+    name: Dependency Vulnerability Scan
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install safety scanner
+      run: pip install safety pip-audit
+
+    - name: Scan with pip-audit
+      run: |
+        pip install -r requirements.txt --dry-run 2>/dev/null || true
+        pip-audit --requirement requirements.txt \
+          --format json \
+          --output pip-audit-report.json || true
+        pip-audit --requirement requirements.txt || true
+
+    - name: Scan with safety
+      run: |
+        safety check -r requirements.txt \
+          --output json > safety-report.json || true
+        safety check -r requirements.txt || true
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          pip-audit-report.json
+          safety-report.json
+        retention-days: 30
+
+  # ── Job 2: Code security scan ──────────────────────────────
+  code-scan:
+    runs-on: ubuntu-latest
+    name: Code Security Scan
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install bandit
+      run: pip install bandit nbconvert
+
+    - name: Convert notebook to Python
+      run: |
+        jupyter nbconvert --to script \
+          alzheimer_classification.ipynb \
+          --output alzheimer_script 2>/dev/null || true
+
+    - name: Run bandit security scan
+      run: |
+        bandit -r . \
+          --exclude ./.git \
+          -f json \
+          -o bandit-report.json || true
+        bandit -r . \
+          --exclude ./.git \
+          --severity-level medium || true
+
+    - name: Upload bandit report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: bandit-report
+        path: bandit-report.json
+        retention-days: 30
+
+  # ── Job 3: Secret detection ────────────────────────────────
+  secret-scan:
+    runs-on: ubuntu-latest
+    name: Secret Detection
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for secret scanning
+
+    - name: Install detect-secrets
+      run: pip install detect-secrets
+
+    - name: Scan for secrets
+      run: |
+        detect-secrets scan \
+          --exclude-files '.git/.*' \
+          > secrets-baseline.json
+        detect-secrets audit secrets-baseline.json || true
+        python3 - << 'EOF'
+        import json
+        with open('secrets-baseline.json') as f:
+            results = json.load(f)
+        results_list = results.get('results', {})
+        if results_list:
+            print(f"WARNING: Potential secrets found in {len(results_list)} file(s)")
+            for fname in results_list:
+                print(f"  - {fname}")
+        else:
+            print("No secrets detected ✓")
+        EOF
+
+    - name: Upload secrets baseline
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: secrets-scan
+        path: secrets-baseline.json
+        retention-days: 30
