@@ -17,7 +17,7 @@ MRI classification.
 If you discover a security vulnerability, please:
 
 1. **Do not** open a public GitHub issue
-2. Email: [your.email@famu.edu]
+2. Email: josiah1.chuku@famu.edu
 3. Include:
    - Description of the vulnerability
    - Steps to reproduce
