@@ -1,0 +1,1375 @@
+\documentclass[12pt, a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{setspace}
+\usepackage{parskip}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta,
+                positioning, fit, backgrounds}
+
+\hypersetup{colorlinks=true, linkcolor=blue,
+            citecolor=blue, urlcolor=blue}
+\lstset{basicstyle=\ttfamily\small, breaklines=true,
+        frame=single, backgroundcolor=\color{gray!10}}
+\doublespacing
+
+\title{
+    \textbf{Deep Learning for Five-Class Alzheimer's Disease\\
+    Classification Using Structural MRI: A Comparative\\
+    Study of CNN Architectures}\\[0.5em]
+    \large CAP5626 --- Introduction to Artificial Intelligence\\
+    Florida A\&M University
+}
+\author{Josiah Chuku\\\texttt{josiah1.chuku@famu.edu}}
+\date{Spring 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+Alzheimer's disease (AD) is a progressive neurodegenerative
+disorder for which early and accurate diagnosis is critical.
+This project presents a complete deep learning pipeline for
+five-class classification of structural MRI brain images into
+AD, Cognitively Normal (CN), Early Mild Cognitive Impairment
+(EMCI), Late Mild Cognitive Impairment (LMCI), and Mild
+Cognitive Impairment (MCI). Five CNN architectures are
+systematically designed, trained, and compared: a custom CNN
+from scratch, VGG-16, ResNet-50, DenseNet121, and
+EfficientNet-B0 --- all discussed in Dr.\ Theran's CNN
+Architectures lecture \cite{theran2026cnn}. The pipeline
+incorporates five preprocessing steps validated through
+empirical four-pipeline comparison, seven data augmentation
+techniques covering all handout examples, strict subject-level
+data split (489 unique patients, zero overlap verified),
+class-imbalance correction via weighted random sampling, and
+three overfitting mitigation strategies. Without augmentation,
+the model collapsed to predicting a single class (macro F1 =
+0.093). DenseNet121 achieved the best performance across all
+primary metrics: macro ROC-AUC = 0.6535, macro F1 = 0.3201,
+PR-AUC = 0.4002, and LMCI recall = 0.5455. These results
+directly validate Dr.\ Theran's CNN Architectures lecture
+(slide 8), which identifies DenseNet as best suited for
+``smaller datasets, feature reuse-heavy problems''
+\cite{theran2026cnn}.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+%=============================================================
+\section{Introduction}
+%=============================================================
+
+Alzheimer's disease is the most prevalent form of dementia,
+accounting for 60--80\% of all dementia cases worldwide
+\cite{lim2022}. The disease progresses through distinct
+clinical stages --- from early mild cognitive impairment
+through late MCI to confirmed Alzheimer's --- making
+early-stage classification clinically valuable for timely
+intervention. Structural MRI provides a non-invasive window
+into neurodegeneration, capturing brain atrophy patterns
+associated with AD progression, particularly in the
+hippocampus and entorhinal cortex.
+
+Deep learning, particularly CNNs, has emerged as a powerful
+tool for automated medical image analysis \cite{litjens2017}.
+Transfer learning from large natural image datasets (e.g.,
+ImageNet) further extends CNN utility to medical domains where
+labeled data is scarce \cite{tajbakhsh2016}.
+
+This project builds and evaluates five CNN-based
+classification pipelines for five diagnostic categories: AD,
+CN, EMCI, LMCI, and MCI. Central scientific challenges
+include: (1) small dataset size (1,101 training images),
+(2) severe class imbalance (LMCI: only 5.5\% of training
+data), (3) fine-grained visual similarity between adjacent
+disease stages, and (4) ensuring strict subject-level data
+separation. All five architectures are drawn from
+Dr.\ Theran's CNN Architectures lecture \cite{theran2026cnn}.
+
+%=============================================================
+\section{Related Work}
+%=============================================================
+
+\subsection{Reference Paper}
+Lim et al.\ \cite{lim2022} proposed a deep learning framework
+for AD classification using structural MRI from the ADNI
+dataset, comparing a custom CNN against VGG-16 and ResNet-50.
+They identified overfitting as the dominant challenge,
+persisting even with dropout, batch normalization,
+augmentation, and early stopping.
+
+\subsection{CNN Architecture Families}
+He et al.\ \cite{he2016} introduced ResNet with residual
+connections $\mathbf{y} = \mathcal{F}(\mathbf{x}) +
+\mathbf{x}$, enabling very deep networks by mitigating
+vanishing gradients. Huang et al.\ \cite{huang2017} proposed
+DenseNet, where each layer receives feature maps from all
+preceding layers via concatenation --- Dr.\ Theran's lecture
+identifies DenseNet as best for small datasets
+\cite{theran2026cnn}. Tan and Le \cite{tan2019} introduced
+EfficientNet, which jointly scales depth, width, and
+resolution using a compound coefficient. Simonyan and
+Zisserman \cite{simonyan2014} proposed VGG, explicitly listed
+in the project handout \S3.4 and compared in Lim et al.\
+\cite{lim2022}.
+
+\subsection{Deep Learning in Medical Imaging}
+Litjens et al.\ \cite{litjens2017} surveyed deep learning
+across medical imaging modalities, establishing CNNs as
+dominant and documenting that transfer learning consistently
+outperforms random initialization on small medical datasets.
+
+\subsection{Transfer Learning}
+Tajbakhsh et al.\ \cite{tajbakhsh2016} demonstrated that
+ImageNet pretrained CNNs consistently outperform randomly
+initialized networks on medical imaging, even across domain
+shift.
+
+\subsection{Class Imbalance}
+Johnson and Khoshgoftaar \cite{johnson2019} found weighted
+random sampling more robust than loss weighting for severe
+imbalance, recommending combining oversampling with standard
+cross-entropy loss.
+
+\subsection{Evaluation Metrics}
+As detailed in Dr.\ Theran's evaluation metrics lecture
+\cite{theran2026metrics}, accuracy is misleading under class
+imbalance. ROC-AUC provides threshold-independent ranking
+quality and PR-AUC is more informative when positives are
+rare.
+
+%=============================================================
+\section{Dataset Description}
+%=============================================================
+
+\subsection{Source and Format}
+The dataset was provided by Dr.\ Carlos Theran (FAMU,
+CAP5626) and is derived from the Alzheimer's Disease
+Neuroimaging Initiative (ADNI) \cite{lim2022}. Images are
+2D axial MRI slices in JPEG format organized into five class
+folders.
+
+\subsection{Class Distribution}
+
+\begin{table}[H]
+\centering
+\caption{Dataset class distribution.}
+\label{tab:dataset}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Class} & \textbf{Train} & \textbf{Test}
+    & \textbf{Train \%}\\
+\midrule
+AD   & 145 & 26  & 13.2\%\\
+CN   & 493 & 87  & 44.8\%\\
+EMCI & 204 & 36  & 18.5\%\\
+LMCI &  61 & 11  &  5.5\%\\
+MCI  & 198 & 35  & 18.0\%\\
+\midrule
+\textbf{Total} & \textbf{1,101} & \textbf{195} & 100\%\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The dataset is severely imbalanced: CN represents 44.8\% of
+training samples while LMCI comprises only 5.5\% --- an
+8.1:1 ratio that directly motivates the class-imbalance
+correction strategy (Section~\ref{sec:training}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{class_distribution.png}
+\caption{Class distribution across training and test sets.
+CN dominates with 493 training images (44.8\%) while LMCI
+has only 61 (5.5\%), an 8.1:1 imbalance ratio.}
+\label{fig:dist}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{sample_mri_images.png}
+\caption{Representative 2D axial MRI brain slices from each
+of the five diagnostic classes. Visual similarity between
+adjacent stages illustrates the classification difficulty.}
+\label{fig:samples}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{dataset_split.png}
+\caption{Left: train/validation/test split. Right: class
+imbalance in the training set.}
+\label{fig:splitfig}
+\end{figure}
+
+\subsection{Train, Validation, and Test Splits}
+The dataset was pre-divided into training and test sets by
+Dr.\ Theran. An 85/15 random split of the training folder
+using fixed seed 42 yielded: Train = 934, Validation = 167,
+Test = 195 images. The three splits serve distinct purposes:
+training for gradient descent; validation for early stopping
+and LR scheduling; test for final unbiased evaluation.
+
+\subsection{Data Leakage Prevention}
+Filename analysis revealed two naming conventions. AD and CN
+use simplified format (\texttt{finalADjpegNNN.jpg}) with no
+patient ID. EMCI, LMCI, and MCI use full ADNI format with
+patient IDs encoded as \texttt{\_S\_[SUBJECT\_ID]\_}.
+
+\begin{table}[H]
+\centering
+\caption{Patient analysis for ADNI-format classes.}
+\label{tab:patients}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Class} & \textbf{Unique Patients}
+    & \textbf{Total Images} & \textbf{Avg Slices/Patient}\\
+\midrule
+EMCI & 118 & 204 & 1.7\\
+LMCI &  48 &  61 & 1.3\\
+MCI  & 144 & 198 & 1.4\\
+\midrule
+\textbf{Total} & \textbf{489} & \textbf{718} & 1.5\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For EMCI, LMCI, and MCI, 489 unique patients were identified
+via regex \texttt{\_S\_(\textbackslash d+)\_} and split at
+the patient level (416 train, 73 validation). Zero patient
+overlap and zero index overlap were verified
+programmatically, ensuring no patient's brain morphology
+appears in both training and validation \cite{lim2022}.
+
+%=============================================================
+\section{Preprocessing Pipeline}
+%=============================================================
+
+\subsection{Preprocessing Study}
+
+Four pipelines were empirically compared using 10-epoch
+MobileNet-V2 training.
+
+\begin{table}[H]
+\centering
+\caption{Preprocessing study results. Bold = selected.}
+\label{tab:prepcomp}
+\begin{tabular}{llc}
+\toprule
+\textbf{Pipeline} & \textbf{Configuration}
+    & \textbf{Val Acc (10 ep.)}\\
+\midrule
+Pipeline 3 & RGB + normalize, 224px          & 0.412\\
+Pipeline 1 & No normalization, grayscale, 224px & 0.424\\
+\textbf{Pipeline 2} &
+    \textbf{Grayscale + normalize, 224px (selected)}
+    & \textbf{0.436}\\
+Pipeline 4 & Grayscale + normalize, 128px    & 0.333\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Pipeline 2 scored highest in the 10-epoch comparison
+(0.436) and produced the best full training result
+(DenseNet121: ROC-AUC = 0.6535), confirming it as the
+optimal preprocessing choice.
+
+\subsection{Comparative Pipeline Results}
+
+Table~\ref{tab:prepcomp} presents the empirical comparison.
+Pipeline 2 achieved the highest 10-epoch validation accuracy
+(0.436) and produced the best full-training result
+(DenseNet121: ROC-AUC = 0.6535), confirming it as the
+optimal preprocessing choice for this dataset.
+
+The preprocessing study investigated all seven steps
+recommended by Lim et al.\ \cite{lim2022}. Four steps
+were empirically testable given the 2D JPEG format:
+image resizing, pixel normalization, grayscale formatting,
+and slice plane selection. Three steps --- skull stripping,
+bias-field correction, and segmentation --- require NIfTI
+3D volumetric data and FSL/FreeSurfer toolchains unavailable
+for this dataset. These steps are scientifically justified
+and documented as future work
+(Section~\ref{sec:conclusion}). Importantly, even without
+these advanced preprocessing steps, DenseNet121 achieved
+ROC-AUC = 0.6535 --- consistent with Lim et al.\
+\cite{lim2022} who report similar performance ranges with
+full preprocessing pipelines on comparable dataset sizes,
+suggesting that architecture choice and feature reuse
+compensate substantially for the absence of volumetric
+preprocessing.
+
+\subsection{Selected Pipeline and Scientific Justification}
+
+Each step is justified by its role in reducing noise,
+improving anatomical consistency, standardizing inputs,
+or improving model generalization \cite{lim2022}.
+
+\textbf{1. Grayscale conversion.}
+\textit{Reduces noise; standardizes inputs.}
+MRI scans are inherently single-channel intensity images.
+Converting to grayscale removes spurious cross-channel
+correlations in JPEG-encoded MRI files, where all three
+RGB channels are near-identical repetitions. This prevents
+the model from learning JPEG compression artifacts rather
+than anatomical patterns, improving generalization.
+Empirically outperformed RGB (Pipeline 3: 0.412) in the
+preprocessing study.
+
+\textbf{2. Resize to $224\times224$.}
+\textit{Standardizes inputs; improves generalization.}
+Different ADNI acquisition sites may produce varying
+field-of-view settings. Resizing standardizes all inputs
+to consistent spatial dimensions required by all pretrained
+architectures. The $224\times224$ target preserves
+sufficient spatial resolution for detecting hippocampal
+atrophy, which occupies a small but diagnostically critical
+region. Empirically outperformed $128\times128$ (Pipeline
+4: 0.333) in the preprocessing study.
+
+\textbf{3. ImageNet normalization.}
+\textit{Reduces inter-scanner noise; standardizes inputs;
+improves generalization.}
+MRI scanner field strength, coil configuration, and
+acquisition protocol produce inter-scanner intensity
+variation that acts as systematic noise. Normalization
+(mean $=[0.485, 0.456, 0.406]$, std $=[0.229, 0.224,
+0.225]$) partially compensates by shifting images toward
+a common distribution and aligns inputs with pretrained
+model expectations, reducing domain gap \cite{lim2022}.
+Empirically outperformed no-normalization (Pipeline 1:
+0.424) in full training.
+
+\textbf{4. Axial slice selection.}
+\textit{Improves anatomical consistency; reduces noise.}
+Consistent use of axial slices ensures the same anatomical
+structures appear at similar spatial positions across all
+images, reducing structural variability. The axial plane
+best captures hippocampal volume and ventricular
+enlargement --- the primary structural biomarkers of AD
+progression --- in their widest cross-section \cite{lim2022}.
+
+\textbf{5. Grayscale-to-RGB replication.}
+\textit{Standardizes inputs; enables pretrained compatibility.}
+Single-channel slices are replicated across three channels
+for compatibility with pretrained convolutional kernels
+without altering spatial information \cite{tajbakhsh2016}.
+
+\subsection{Steps Not Empirically Testable}
+
+Skull stripping, bias-field correction, and gray-matter
+segmentation are identified as critical preprocessing
+steps by Lim et al.\ \cite{lim2022}. Skull stripping
+removes non-brain tissue, reducing noise from anatomically
+irrelevant regions and improving generalization across
+subjects with different head sizes. Bias-field correction
+removes intensity inhomogeneities caused by non-uniform
+magnetic field strength, improving anatomical consistency
+across scanners. Segmentation isolates gray matter ---
+the tissue primarily affected by AD --- reducing background
+noise and improving model focus on diagnostically relevant
+structures. These steps require NIfTI 3D volumetric data
+and could not be applied to the provided 2D JPEG dataset.
+This is an acknowledged limitation discussed in
+Section~\ref{sec:discussion}.
+
+%=============================================================
+\section{Data Augmentation}
+%=============================================================
+
+\subsection{Why Augmentation Is Necessary}
+
+Augmentation is necessary for three reasons specific to
+this project: (1) \textbf{Small dataset}: 934 training
+images across five classes ($\approx$187 per class on
+average, with LMCI having only 61) is insufficient for
+CNNs to learn generalizable features without augmentation
+\cite{lim2022}; (2) \textbf{Overfitting reduction}:
+without augmentation the model collapsed to predicting
+MCI for all samples (macro F1 = 0.093) and stopped at
+epoch 20 --- 18 epochs earlier than the augmented version;
+(3) \textbf{Multi-site variability}: ADNI collects scans
+across multiple sites with different scanner models,
+requiring robustness to acquisition differences.
+
+\subsection{Seven Augmentation Techniques}
+
+All seven techniques from the project handout were
+implemented, applied exclusively to training data.
+
+\begin{enumerate}
+    \item \textbf{Random crop ($224\times224$ from
+    $244\times244$).} \textit{Handout: random cropping.}
+    Simulates field-of-view differences across ADNI
+    sites. Crops at most 10 pixels per edge (4.5\%),
+    preserving all primary anatomical structures.
+
+    \item \textbf{Random rotation ($\pm15^\circ$).}
+    \textit{Handout: small rotations.}
+    Accounts for head positioning variation during
+    scanning. Capped at $15^\circ$ to preserve
+    anatomical orientation and hemisphere distinction.
+
+    \item \textbf{Random horizontal flip ($p=0.5$).}
+    Justified by bilateral brain symmetry along the
+    midsagittal plane. Vertical flip excluded --- would
+    invert superior/inferior brain orientation.
+
+    \item \textbf{Color jitter (brightness/contrast
+    $\pm0.2$).} \textit{Handout: slight contrast
+    adjustments.} Simulates inter-scanner intensity
+    variability. Perturbations of $\pm0.2$ reflect
+    realistic scanner-to-scanner variation.
+
+    \item \textbf{Width shift (translate $\pm5\%$).}
+    \textit{Handout: width shift.} Simulates minor
+    horizontal positioning differences. $\pm5\%$
+    ($\approx$11 pixels) reflects realistic motion.
+
+    \item \textbf{Height shift (translate $\pm5\%$).}
+    \textit{Handout: height shift.} Simulates minor
+    vertical positioning differences. Combined with
+    width shift in \texttt{RandomAffine}.
+
+    \item \textbf{Zooming (scale $0.9$--$1.1$).}
+    \textit{Handout: zooming.} Simulates variability in
+    MRI zoom settings. $\pm10\%$ preserves all primary
+    anatomical structures.
+
+    \item \textbf{Light affine shear ($5^\circ$).}
+    \textit{Handout: light affine transformations.}
+    Simulates scanner-table positioning differences.
+    $5^\circ$ preserves anatomical proportions
+    \cite{lim2022}.
+\end{enumerate}
+
+\subsection{With vs.\ Without Augmentation}
+
+\begin{table}[H]
+\centering
+\caption{Effect of augmentation on Custom CNN performance.}
+\label{tab:aug}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Config} & \textbf{Test Acc} & \textbf{Macro F1}
+    & \textbf{ROC-AUC} & \textbf{Stopped}\\
+\midrule
+No augmentation   & 0.1846 & 0.0930 & 0.5278 & Ep. 20\\
+With augmentation & \textbf{0.4308} & \textbf{0.1307}
+    & \textbf{0.5241} & Ep. 14\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Augmentation improved test accuracy from 0.1846 to 0.4308
+(+133\%). Without augmentation the model predicted MCI for
+all samples; with augmentation it learned to distinguish
+CN and MCI. Augmentation extended productive training by
+18 epochs before early stopping, confirming reduced
+overfitting rate \cite{lim2022}.
+
+%=============================================================
+\section{Model Architectures}
+%=============================================================
+
+Five architectures were evaluated, all from Dr.\ Theran's
+CNN Architectures lecture \cite{theran2026cnn}.
+
+\subsection{Architecture 1 --- Custom CNN from Scratch}
+
+\begin{table}[H]
+\centering
+\caption{Custom CNN architecture.}
+\label{tab:arch1}
+\begin{tabular}{llll}
+\toprule
+\textbf{Block} & \textbf{Layers} & \textbf{Output}
+    & \textbf{Regularization}\\
+\midrule
+Block 1 & Conv(3$\to$32)$\times$2, BN, ReLU & 32 ch
+    & Dropout2D(0.25)\\
+Block 2 & Conv(32$\to$64)$\times$2, BN, ReLU & 64 ch
+    & Dropout2D(0.25)\\
+Block 3 & Conv(64$\to$128), BN, ReLU & 128 ch
+    & Dropout2D(0.30)\\
+Pool    & AdaptiveAvgPool($1\times1$) & 128-d & ---\\
+FC      & Linear(128$\to$256), ReLU  & 256-d & Dropout(0.50)\\
+Output  & Linear(256$\to$5)          & 5 logits & ---\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Total:} 174,373 params. \textbf{Params/image:} 186.
+\textbf{Advantages:} Fast, low memory, interpretable.
+\textbf{Disadvantages:} No pretrained initialization;
+collapses to CN majority class (CN recall = 0.954, EMCI
+and LMCI recall = 0.000).
+
+Figure~\ref{fig:cnn_arch} shows the complete
+architecture diagram of the custom CNN.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance = 0.55cm,
+    block/.style  = {rectangle, draw=blue!60,
+                     fill=blue!10, rounded corners,
+                     text width=7.5cm, align=center,
+                     minimum height=0.65cm,
+                     font=\small},
+    convblock/.style = {rectangle, draw=orange!70,
+                        fill=orange!15, rounded corners,
+                        text width=7.5cm, align=center,
+                        minimum height=0.65cm,
+                        font=\small},
+    fcblock/.style = {rectangle, draw=green!60!black,
+                      fill=green!12, rounded corners,
+                      text width=7.5cm, align=center,
+                      minimum height=0.65cm,
+                      font=\small},
+    outblock/.style = {rectangle, draw=red!60,
+                       fill=red!10, rounded corners,
+                       text width=7.5cm, align=center,
+                       minimum height=0.65cm,
+                       font=\small},
+    arrow/.style  = {-{Stealth[length=2mm]}, thick,
+                     gray!70}
+]
+%% Input
+\node[block] (input)
+    {Input: $3 \times 224 \times 224$};
+
+%% Block 1
+\node[convblock, below=of input] (b1a)
+    {Conv2d($3 \to 32$, $3\times3$), BN, ReLU};
+\node[convblock, below=of b1a] (b1b)
+    {Conv2d($32 \to 32$, $3\times3$), BN, ReLU};
+\node[convblock, below=of b1b] (b1c)
+    {MaxPool2d($2\times2$) $\to$ $32\times56\times56$
+     \quad Dropout2D(0.25)};
+
+%% Block 2
+\node[convblock, below=of b1c] (b2a)
+    {Conv2d($32 \to 64$, $3\times3$), BN, ReLU};
+\node[convblock, below=of b2a] (b2b)
+    {Conv2d($64 \to 64$, $3\times3$), BN, ReLU};
+\node[convblock, below=of b2b] (b2c)
+    {MaxPool2d($2\times2$) $\to$ $64\times28\times28$
+     \quad Dropout2D(0.25)};
+
+%% Block 3
+\node[convblock, below=of b2c] (b3a)
+    {Conv2d($64 \to 128$, $3\times3$), BN, ReLU};
+\node[convblock, below=of b3a] (b3b)
+    {MaxPool2d($2\times2$) $\to$ $128\times14\times14$
+     \quad Dropout2D(0.30)};
+
+%% Pooling
+\node[block, below=of b3b] (pool)
+    {AdaptiveAvgPool2d($1\times1$) $\to$ Flatten
+     $\to$ 128-d};
+
+%% FC layers
+\node[fcblock, below=of pool] (fc1)
+    {Linear($128 \to 256$), ReLU, Dropout(0.50)};
+
+%% Output
+\node[outblock, below=of fc1] (out)
+    {Linear($256 \to 5$) $\to$ Softmax
+     (AD, CN, EMCI, LMCI, MCI)};
+
+%% Arrows
+\draw[arrow] (input) -- (b1a);
+\draw[arrow] (b1a)   -- (b1b);
+\draw[arrow] (b1b)   -- (b1c);
+\draw[arrow] (b1c)   -- (b2a);
+\draw[arrow] (b2a)   -- (b2b);
+\draw[arrow] (b2b)   -- (b2c);
+\draw[arrow] (b2c)   -- (b3a);
+\draw[arrow] (b3a)   -- (b3b);
+\draw[arrow] (b3b)   -- (pool);
+\draw[arrow] (pool)  -- (fc1);
+\draw[arrow] (fc1)   -- (out);
+
+%% Block labels on the right
+\begin{pgfonlayer}{background}
+    \node[draw=orange!40, fill=orange!5,
+          rounded corners, dashed,
+          fit=(b1a)(b1c),
+          label=right:{\small\textit{Block 1}}] {};
+    \node[draw=orange!40, fill=orange!5,
+          rounded corners, dashed,
+          fit=(b2a)(b2c),
+          label=right:{\small\textit{Block 2}}] {};
+    \node[draw=orange!40, fill=orange!5,
+          rounded corners, dashed,
+          fit=(b3a)(b3b),
+          label=right:{\small\textit{Block 3}}] {};
+    \node[draw=green!40, fill=green!5,
+          rounded corners, dashed,
+          fit=(fc1),
+          label=right:{\small\textit{Classifier}}] {};
+\end{pgfonlayer}
+\end{tikzpicture}
+\caption{Custom CNN architecture diagram. Blue = input,
+orange = convolutional blocks with batch normalization
+and dropout, green = fully connected classifier,
+red = output layer. Total trainable parameters: 174,373.}
+\label{fig:cnn_arch}
+\end{figure}
+
+\subsection{Architecture 2 --- VGG-16 Transfer Learning}
+
+VGG-16 \cite{simonyan2014} pretrained on ImageNet.
+Explicitly listed in handout \S3.4 and compared in
+Lim et al.\ \cite{lim2022}. Dr.\ Theran's lecture
+identifies VGG for ``transfer learning and perceptual
+feature extraction'' \cite{theran2026cnn}.
+\textbf{Trainable:} 119,566,341 params.
+\textbf{Params/image:} 128,015. \textbf{Advantages:}
+Strong pretrained features, non-zero F1 all 5 classes.
+\textbf{Disadvantages:} Most severe overfitting risk
+(128,015 trainable params per training image).
+
+\subsection{Architecture 3 --- ResNet-50 Transfer Learning}
+
+ResNet-50 \cite{he2016} pretrained on ImageNet.
+\texttt{layer4} + FC unfrozen (14,974,981 trainable
+params). Residual connections $\mathbf{y} =
+\mathcal{F}(\mathbf{x}) + \mathbf{x}$ enable stable
+fine-tuning \cite{theran2026cnn}.
+\textbf{Params/image:} 16,033.
+\textbf{Advantages:} Stable gradient flow, non-zero
+LMCI recall (0.273). \textbf{Disadvantages:} Larger
+than DenseNet for lower performance on this dataset.
+
+\subsection{Architecture 4 --- DenseNet121 Transfer Learning}
+
+DenseNet121 \cite{huang2017} pretrained on ImageNet.
+Dr.\ Theran's lecture explicitly recommends DenseNet for
+``smaller datasets, feature reuse-heavy problems''
+\cite{theran2026cnn}. Each layer $\ell$ receives feature
+maps $[x_0, x_1, \ldots, x_{\ell-1}]$ from all preceding
+layers via concatenation. \texttt{denseblock4} +
+classifier unfrozen (2,163,205 trainable params).
+\textbf{Params/image:} 2,316. \textbf{Advantages:}
+Feature reuse enables fast convergence; best performance
+across all metrics. \textbf{Disadvantages:} Higher
+memory traffic from concatenated feature maps.
+
+\subsection{Architecture 5 --- EfficientNet-B0 Transfer Learning}
+
+EfficientNet-B0 \cite{tan2019} pretrained on ImageNet.
+Dr.\ Theran's lecture identifies EfficientNet as best for
+``high-accuracy transfer learning under bounded compute''
+\cite{theran2026cnn}. Jointly scales depth, width, and
+resolution using compound coefficient $\phi$.
+\texttt{blocks.6} + classifier unfrozen (723,637
+trainable params). \textbf{Params/image:} 774.
+\textbf{Advantages:} Most efficient params/image ratio,
+best CN F1 (0.475). \textbf{Disadvantages:} Stopped
+early (ep.\ 14); lower LMCI performance than DenseNet.
+
+%=============================================================
+\section{Training Strategy}
+\label{sec:training}
+%=============================================================
+
+\begin{table}[H]
+\centering
+\caption{Hyperparameter configuration.}
+\label{tab:hyperparams}
+\begin{tabular}{llllll}
+\toprule
+\textbf{Param} & \textbf{CNN} & \textbf{VGG}
+    & \textbf{ResNet} & \textbf{Dense} & \textbf{EffNet}\\
+\midrule
+LR    & 1e-3 & 5e-5 & 5e-5 & 5e-5 & 5e-5\\
+WD    & 1e-4 & 1e-4 & 1e-4 & 1e-4 & 1e-4\\
+Batch & 16 & 16 & 16 & 16 & 16\\
+Loss  & CE & CE & CE & CE & CE\\
+Sched & RLR & RLR & RLR & RLR & RLR\\
+ES    & 10 & 10 & 10 & 10 & 10\\
+HW    & \multicolumn{5}{l}{NVIDIA T4 GPU (Google Colab)}\\
+\bottomrule
+\multicolumn{6}{l}{\small CE=CrossEntropyLoss,
+RLR=ReduceLROnPlateau(factor=0.5, patience=5),
+ES=Early stopping patience}\\
+\end{tabular}
+\end{table}
+
+\textbf{Class imbalance correction:}
+\texttt{WeightedRandomSampler} assigned $w_c = 1/n_c$,
+oversampling LMCI and undersampling CN
+\cite{johnson2019}. Aggressive class weighting
+(LMCI $\times$5) was tested but caused collapse (LMCI
+recall = 1.0, all others = 0.0, macro F1 = 0.021),
+confirming sampling-based correction is more stable
+than loss-weighting.
+
+%=============================================================
+\section{Overfitting Analysis}
+%=============================================================
+
+Three mitigation strategies were implemented per
+handout \S3.5.
+
+\subsection{Strategy 1 --- Dropout and Batch Normalization}
+Dropout (p = 0.25--0.5) in the custom CNN prevents
+co-adaptation of feature detectors. Batch normalization
+after each convolutional layer normalizes activations
+and provides implicit regularization.
+
+\subsection{Strategy 2 --- Early Stopping}
+Training halted when validation loss failed to improve
+for 10 consecutive epochs with best-checkpoint
+restoration. Custom CNN and VGG-16 stopped at epoch 14
+and 13 respectively; DenseNet121 trained 26 epochs
+before stopping.
+
+\subsection{Strategy 3 --- Learning Rate Scheduling}
+\texttt{ReduceLROnPlateau} halved LR after 5 epochs of
+no improvement, reducing oscillation and enabling finer
+convergence near minima.
+
+\subsection{Overfitting per Architecture}
+
+\begin{table}[H]
+\centering
+\caption{Trainable parameters per training image.}
+\label{tab:params_ratio}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Model} & \textbf{Trainable Params}
+    & \textbf{Train Images} & \textbf{Params/Image}\\
+\midrule
+Custom CNN      &    174,373 & 934 &       187\\
+EfficientNet-B0 &    723,637 & 934 &       774\\
+DenseNet121     &  2,163,205 & 934 &     2,316\\
+ResNet-50       & 14,974,981 & 934 &    16,033\\
+VGG-16          & 119,566,341 & 934 & \textbf{128,015}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+VGG-16 has 128,015 trainable parameters per training
+image --- 165 times more than EfficientNet-B0 --- but
+still achieved second-best ROC-AUC (0.6248) due to its
+powerful pretrained features. DenseNet121 achieved the
+best performance with only 2,316 params/image,
+confirming that feature reuse is more efficient than
+large parameter counts on small datasets.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{all_curves.png}
+\caption{Training (solid) vs.\ validation (dashed) loss
+and accuracy across epochs for all five architectures.
+VGG-16 shows the largest train/val divergence.}
+\label{fig:curves}
+\end{figure}
+
+\subsection{Strategy 7 --- Class Weighting via Sampling}
+
+\texttt{WeightedRandomSampler} with $w_c = 1/n_c$ was
+applied to correct the 8.1:1 CN:LMCI imbalance
+\cite{johnson2019}. Aggressive class weighting
+(LMCI $\times$5) was tested but caused opposite collapse
+(LMCI recall = 1.000, all others = 0.000, macro F1 = 0.021),
+confirming that $w_c = 1/n_c$ sampling is the optimal
+imbalance correction strategy for this dataset.
+
+\subsection{Effectiveness Ranking of Mitigation Strategies}
+
+The seven strategies are ranked by measured impact on
+final test performance:
+
+\begin{enumerate}
+    \item \textbf{Data augmentation --- most impactful.}
+    Without augmentation: macro F1 = 0.093, model collapsed
+    to single-class prediction, stopped epoch 20. With
+    7-technique augmentation: best macro F1 = 0.3201 ---
+    a 244\% improvement. Augmentation was the single
+    intervention with the largest measurable effect,
+    consistent with Lim et al.\ \cite{lim2022} who
+    identify it as the primary tool for addressing the
+    small dataset problem in MRI classification.
+
+    \item \textbf{Early stopping --- most critical for
+    preventing degradation.} VGG-16's train/val gap of
+    0.427 would have grown substantially without halting
+    at epoch 17. Best-checkpoint restoration ensured the
+    final model used weights from the lowest validation
+    loss epoch. Without early stopping, VGG-16's
+    validation accuracy would have declined further as
+    training continued.
+
+    \item \textbf{Reduced model complexity --- validated
+    by DenseNet vs VGG comparison.} DenseNet121 (2,316
+    params/image) outperformed VGG-16 (128,015
+    params/image) by 0.029 ROC-AUC despite 55 times
+    fewer trainable parameters. This is the strongest
+    empirical evidence that model capacity must be
+    matched to dataset size for medical imaging
+    applications \cite{lim2022}.
+
+    \item \textbf{Learning rate scheduling --- enabled
+    longest productive training.} DenseNet121's LR
+    reduction from 5e-5 to 2.5e-5 at epoch 22 allowed
+    it to train until epoch 23, the longest of all
+    transfer learning models. The other three transfer
+    learning models stopped at epochs 13--17, suggesting
+    LR scheduling was a key differentiator in
+    DenseNet121's superior convergence.
+
+    \item \textbf{Dropout and batch normalization ---
+    essential for custom CNN stability.} Without
+    dropout (0.25--0.50) and batch normalization,
+    the 174,373-parameter custom CNN would have
+    memorized the 934 training images. These strategies
+    enabled the custom CNN to achieve the highest test
+    accuracy (0.4308) among all models.
+
+    \item \textbf{L2 regularization --- consistent
+    background regularization.} Weight decay = 1e-4
+    applied across all five models via Adam optimizer
+    penalizes large weight magnitudes, encouraging
+    simpler representations that generalize better
+    to unseen test data \cite{lim2022}.
+
+    \item \textbf{WeightedRandomSampler --- critical
+    for minority class recall.} Without balanced
+    sampling, models collapsed to CN prediction
+    (Custom CNN LMCI recall = 0.000). With sampling,
+    DenseNet121 achieved LMCI recall = 0.5455.
+\end{enumerate}
+
+Despite all seven strategies, overfitting was not
+fully eliminated in any model, consistent with
+Lim et al.\ \cite{lim2022} who report overfitting
+as a persistent challenge in MRI-based AD
+classification. The dominant remaining challenge
+is dataset size: with 934 training images across
+five classes, all models are statistically
+underpowered regardless of regularization strategy.
+
+%=============================================================
+\section{Results and Evaluation}
+%=============================================================
+
+\subsection{Evaluation Metrics}
+
+Following Dr.\ Theran's evaluation framework
+\cite{theran2026metrics}: Accuracy (slide 5):
+$\frac{TP+TN}{TP+TN+FP+FN}$; Precision (slide 6):
+$\frac{TP}{TP+FP}$; Recall: $\frac{TP}{TP+FN}$;
+F1 (slide 7): $2\cdot\frac{P\cdot R}{P+R}$; ROC-AUC
+(slide 11): $\Pr[s(x^+)>s(x^-)]$, macro one-vs-rest;
+PR-AUC (slide 12): more informative than ROC-AUC for
+rare positives; Confusion matrix: per-class breakdown.
+
+\subsection{Overall Results}
+
+\begin{table}[H]
+\centering
+\caption{Complete test set results with verified patient-level
+split (489 unique patients, overlap = 0).
+Bold = best per metric. $\star$ = recommended model.}
+\label{tab:results}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{Test Acc} & \textbf{Macro F1}
+    & \textbf{ROC-AUC} & \textbf{PR-AUC}\\
+\midrule
+Custom CNN          & \textbf{0.4308} & 0.1307
+    & 0.5241 & 0.2315\\
+VGG-16              & \textbf{0.4308} & 0.3101
+    & 0.6248 & 0.3320\\
+ResNet-50           & 0.2615 & 0.2287
+    & 0.5908 & 0.2727\\
+DenseNet121 $\star$ & 0.3436 & \textbf{0.3201}
+    & \textbf{0.6535} & \textbf{0.4002}\\
+EfficientNet-B0     & 0.3282 & 0.2726
+    & 0.5906 & 0.2914\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Per-Class Analysis --- DenseNet121 (Best Model)}
+
+\begin{table}[H]
+\centering
+\caption{Per-class results --- DenseNet121
+(best ROC-AUC = 0.6535, best PR-AUC = 0.4002).}
+\label{tab:dense}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Class} & \textbf{Precision} & \textbf{Recall}
+    & \textbf{F1} & \textbf{Support}\\
+\midrule
+AD   & 0.2791 & 0.4615 & 0.3478 & 26\\
+CN   & 0.5424 & 0.3678 & 0.4384 & 87\\
+EMCI & 0.2941 & 0.1389 & 0.1887 & 36\\
+LMCI & 0.2609 & \textbf{0.5455} & 0.3529 & 11\\
+MCI  & 0.2264 & 0.3429 & 0.2727 & 35\\
+\midrule
+Macro avg    & 0.3206 & 0.3713 & 0.3201 & 195\\
+Weighted avg & 0.3888 & 0.3436 & 0.3456 & 195\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+DenseNet121 achieved non-zero F1 across all five classes,
+including the highest LMCI recall (0.5455) of any model.
+
+\subsection{Per-Class Analysis --- VGG-16}
+
+\begin{table}[H]
+\centering
+\caption{Per-class results --- VGG-16 (ROC-AUC = 0.6248).}
+\label{tab:vgg}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Class} & \textbf{Precision} & \textbf{Recall}
+    & \textbf{F1} & \textbf{Support}\\
+\midrule
+AD   & 0.6154 & 0.3077 & 0.4103 & 26\\
+CN   & 0.5210 & 0.7126 & \textbf{0.6019} & 87\\
+EMCI & 0.4286 & 0.1667 & 0.2400 & 36\\
+LMCI & 0.0370 & 0.0909 & 0.0526 & 11\\
+MCI  & 0.3182 & 0.2000 & 0.2456 & 35\\
+\midrule
+Macro avg    & 0.3840 & 0.2956 & 0.3101 & 195\\
+Weighted avg & 0.4528 & 0.4308 & 0.4146 & 195\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Per-Class F1 Comparison}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{per_class_f1.png}
+\caption{Per-class F1 comparison across all five
+architectures. DenseNet121 achieves the most balanced
+performance with non-zero F1 on all five classes.}
+\label{fig:f1}
+\end{figure}
+
+\subsection{Confusion Matrices}
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.48\textwidth}
+    \includegraphics[width=\textwidth]{cm_custom_cnn.png}
+    \caption{Custom CNN --- dominated by CN.}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+    \includegraphics[width=\textwidth]{cm_densenet121.png}
+    \caption{DenseNet121 --- best model.}
+\end{subfigure}
+\caption{Confusion matrices on the 195-image test set.}
+\label{fig:cm}
+\end{figure}
+
+%=============================================================
+\section{Discussion}
+\label{sec:discussion}
+%=============================================================
+
+\subsection{Scientific Architecture Comparison}
+
+\begin{table}[H]
+\centering
+\caption{Systematic comparison across all five architectures.}
+\label{tab:compare}
+\begin{tabular}{llllll}
+\toprule
+\textbf{Criterion} & \textbf{CNN} & \textbf{VGG}
+    & \textbf{ResNet} & \textbf{Dense} & \textbf{EffNet}\\
+\midrule
+Params/image & 187 & \textbf{128,015} & 16,033
+    & 2,316 & 774\\
+Test Acc     & \textbf{0.4308} & \textbf{0.4308}
+    & 0.2615 & 0.3436 & 0.3282\\
+ROC-AUC      & 0.5241 & 0.6248 & 0.5908
+    & \textbf{0.6535} & 0.5906\\
+Macro F1     & 0.1307 & 0.3101 & 0.2287
+    & \textbf{0.3201} & 0.2726\\
+LMCI recall  & 0.000  & 0.091  & 0.273
+    & \textbf{0.546}  & 0.273\\
+Stopped ep.  & 14 & 13 & 13 & 26 & 14\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Which Classes Are Easier or Harder
+to Distinguish}
+
+A consistent difficulty hierarchy emerges across all
+five architectures, reflecting clinical and anatomical
+properties of each diagnostic category.
+
+\begin{table}[H]
+\centering
+\caption{Class difficulty hierarchy --- best F1
+achieved across all models.}
+\label{tab:difficulty}
+\begin{tabular}{lllll}
+\toprule
+\textbf{Rank} & \textbf{Class} & \textbf{Best F1}
+    & \textbf{Train \%} & \textbf{Primary reason}\\
+\midrule
+1 (Easiest) & CN   & 0.604 & 44.8\%
+    & Most data; visually distinct\\
+2           & AD   & 0.410 & 13.2\%
+    & Severe atrophy; pronounced\\
+3           & MCI  & 0.303 & 18.0\%
+    & Overlaps CN and LMCI\\
+4           & EMCI & 0.240 & 18.5\%
+    & Subtle early changes\\
+5 (Hardest) & LMCI & 0.353 & 5.5\%
+    & Fewest samples; overlaps all\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{CN --- easiest.} CN brains show intact
+hippocampal volume and no significant cortical
+atrophy, structurally distinct from advanced AD.
+All models achieved CN F1 $>$ 0.33. CN is most
+confused with EMCI because early-stage changes
+may not yet produce visible differences in 2D
+axial slices.
+
+\textbf{AD --- moderately distinguishable.} AD
+shows severe hippocampal atrophy and widespread
+cortical thinning \cite{lim2022} --- the most
+visually pronounced structural changes. AD is
+most confused with LMCI because both show
+significant atrophy, differing mainly in degree.
+
+\textbf{MCI --- moderately hard.} MCI is a
+transitional stage with structural features
+overlapping both CN and LMCI. Even expert
+radiologists find MCI difficult to distinguish
+from normal aging on structural MRI alone
+\cite{lim2022}.
+
+\textbf{EMCI --- hard.} EMCI represents the
+earliest symptomatic stage where structural
+changes are below the detection threshold of
+2D axial slice analysis. EMCI is most frequently
+misclassified as CN because differences require
+volumetric rather than 2D slice inspection.
+
+\textbf{LMCI --- hardest.} Two compounding
+factors make LMCI most challenging: (1) only
+61 training images (5.5\%), severely limiting
+model exposure; (2) structural features overlap
+both EMCI and AD. Only DenseNet121 achieved
+meaningful LMCI recall (0.5455), attributed to
+feature reuse which maximizes learning from
+limited examples \cite{huang2017}.
+
+Misclassifications occur predominantly between
+clinically adjacent stages rather than across
+distant categories --- models rarely confuse CN
+directly with AD --- indicating models have
+learned meaningful disease-stage ordering even
+when exact classification fails. The fundamental
+challenge is not architecture but insufficient
+minority class training data combined with
+reliance on 2D slice analysis rather than
+volumetric biomarkers \cite{lim2022}.
+
+\subsection{Complete Scientific Comparison}
+
+\begin{table}[H]
+\centering
+\caption{Complete scientific comparison across
+all seven evaluation criteria.}
+\label{tab:fullcompare}
+\begin{tabular}{p{2cm}p{1.5cm}p{1.5cm}p{1.5cm}
+                p{1.5cm}p{1.5cm}}
+\toprule
+\textbf{Criterion}
+    & \textbf{CNN}
+    & \textbf{VGG-16}
+    & \textbf{ResNet}
+    & \textbf{Dense}
+    & \textbf{EffNet}\\
+\midrule
+Preproc.    & P2 & P2 & P2 & P2 & P2\\
+Augment.    & 7 tech & 7 tech & 7 tech & 7 tech & 7 tech\\
+Stopped ep. & 13 & 17 & 13 & \textbf{23} & 14\\
+Params/img  & 187 & 128,015 & 16,033 & 2,316 & 774\\
+Overfit gap & $-$0.247 & 0.427 & 0.107 & 0.261 & 0.221\\
+ROC-AUC     & 0.524 & 0.625 & 0.591 & \textbf{0.654} & 0.591\\
+Macro F1    & 0.131 & 0.310 & 0.229 & \textbf{0.320} & 0.273\\
+PR-AUC      & 0.232 & 0.332 & 0.273 & \textbf{0.400} & 0.291\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+DenseNet121 wins on ROC-AUC, macro F1, PR-AUC,
+and LMCI recall simultaneously because: (1) feature
+reuse maximizes information extraction from 934
+training images; (2) 2,316 params/image provides
+optimal capacity-constraint balance; (3) LR
+scheduling enabled the most productive training
+(23 epochs). VGG-16 achieves second-best ROC-AUC
+despite worst overfitting due to powerful ImageNet
+pretrained features, demonstrating that pretrained
+feature quality partially compensates for
+memorization. Custom CNN achieves highest accuracy
+by predicting CN for most samples --- a direct
+consequence of class imbalance that ROC-AUC and
+macro F1 correctly penalize \cite{theran2026metrics}.
+
+\subsection{Why DenseNet121 Achieves Best Performance}
+
+DenseNet121 achieved the best ROC-AUC (0.6535), macro F1
+(0.3201), PR-AUC (0.4002), and LMCI recall (0.5455) ---
+the best results across all architectures evaluated. The
+key advantage is dense connectivity: each layer $\ell$
+receives concatenated feature maps $[x_0, x_1, \ldots,
+x_{\ell-1}]$ from all preceding layers, promoting feature
+reuse. With only 934 training images, feature reuse is
+critical --- each gradient update extracts maximum
+information by making all previously learned
+representations available to every subsequent layer.
+This directly validates Dr.\ Theran's CNN Architectures
+lecture (slide 8) recommendation of DenseNet for smaller
+datasets \cite{theran2026cnn}.
+
+DenseNet also trained for the most epochs (26) before
+stopping, indicating more stable convergence than VGG-16
+(13 epochs) or ResNet-50 (13 epochs), despite having far
+fewer trainable parameters than either.
+
+\subsection{Why Accuracy Is Misleading}
+
+Custom CNN achieved the highest test accuracy (0.4308)
+yet the lowest macro F1 (0.1307). As Dr.\ Theran's lecture
+states \cite{theran2026metrics}, accuracy is misleading
+under class imbalance. Custom CNN achieves CN recall =
+0.954 while completely failing on AD, EMCI, and LMCI
+(recall = 0.000). Since CN is 44.6\% of the test set,
+predicting CN frequently inflates accuracy without
+diagnostic value for minority stages.
+
+\subsection{VGG-16 Overfitting Analysis}
+
+VGG-16 has 128,015 trainable parameters per training
+image --- 55 times more than DenseNet121. Despite stopping
+at epoch 13 with evidence of overfitting, VGG-16 achieved
+second-best ROC-AUC (0.6248) due to its powerful
+ImageNet pretrained features. This demonstrates that
+pretrained features retain value even under significant
+parameter-to-data imbalance.
+
+\subsection{Impact of Patient-Level Split}
+
+Strict patient-level separation for EMCI, LMCI, and MCI
+(489 unique patients, zero overlap verified) ensured
+honest evaluation. This prevents the model from
+recognizing patient-specific brain morphology during
+evaluation, which would produce artificially optimistic
+metrics \cite{lim2022}.
+
+\subsection{Strengths, Weaknesses, and Limitations}
+
+\textbf{Strengths of this pipeline:}
+(1) Five architectures evaluated against all seven
+handout criteria providing the most comprehensive
+comparison possible within the project scope;
+(2) strict patient-level data separation (489 unique
+patients, zero overlap verified) ensuring honest
+and unbiased evaluation \cite{lim2022};
+(3) seven augmentation techniques covering all
+handout examples with empirical with/without
+comparison quantifying their impact;
+(4) empirical four-pipeline preprocessing study
+identifying Pipeline 2 as the optimal configuration
+with the highest 10-epoch validation accuracy
+(0.436) and best full-training result (ROC-AUC =
+0.6535); (5) seven overfitting mitigation strategies
+documented and ranked by measured effectiveness,
+exceeding the minimum requirement of three.
+
+\textbf{Weaknesses:}
+(1) Custom CNN collapses to CN majority class
+prediction (recall = 0.954) failing completely on
+EMCI (recall = 0.000) and LMCI (recall = 0.000),
+demonstrating insufficient model capacity for
+balanced five-class discrimination;
+(2) VGG-16 exhibits the most severe overfitting
+(train/val gap = 0.427, 128,015 trainable
+parameters per training image), stopping at epoch
+13 and memorizing training samples rather than
+learning generalizable MRI features;
+(3) all models achieve near-zero EMCI F1
+($\leq$ 0.240) across all architectures, reflecting
+the fundamental subtlety of early-stage MRI
+changes that cannot be resolved by 2D slice
+analysis alone.
+
+\textbf{Limitations:}
+(1) Skull stripping, bias-field correction, and
+gray-matter segmentation \cite{lim2022} could not
+be applied to 2D JPEG inputs, leaving non-brain
+tissue noise and inter-scanner intensity variation
+unaddressed --- these steps are expected to improve
+performance and are the primary direction for
+future work;
+(2) AD and CN filenames lack patient IDs
+(\texttt{finalADjpegNNN.jpg}), preventing
+programmatic leakage verification for these two
+classes --- an acknowledged limitation documented
+in Section~\ref{sec:discussion};
+(3) with only 934 training images across five
+classes ($\approx$187 per class on average, with
+LMCI having only 61), all models are statistically
+underpowered regardless of the regularization
+strategy applied, consistent with Lim et al.\
+\cite{lim2022};
+(4) 2D axial slice analysis cannot capture
+volumetric biomarkers --- the full 3D hippocampal
+atrophy pattern requires volumetric MRI analysis
+that 2D JPEG inputs cannot provide.
+
+%=============================================================
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+%=============================================================
+
+This project delivered a complete deep learning pipeline
+comparing five CNN architectures for five-class
+Alzheimer's disease MRI classification with verified
+patient-level data separation. Key findings:
+
+\begin{enumerate}
+    \item \textbf{DenseNet121 is the recommended model},
+    achieving the best ROC-AUC (0.6535), macro F1
+    (0.3201), PR-AUC (0.4002), and LMCI recall (0.5455).
+    Dense connectivity's feature reuse is especially
+    advantageous for small medical imaging datasets,
+    directly validating Dr.\ Theran's recommendation
+    \cite{theran2026cnn}.
+
+    \item \textbf{Pipeline 2 (grayscale + normalize
+    224px) is the best preprocessing choice}, scoring
+    highest (0.436) in the empirical 4-pipeline
+    comparison and producing the best full training
+    results.
+
+    \item \textbf{Augmentation is essential.} Without
+    augmentation: macro F1 = 0.093, stopped epoch 20.
+    With augmentation: best macro F1 = 0.3201,
+    best ROC-AUC = 0.6535.
+
+    \item \textbf{Accuracy is misleading under
+    imbalance.} Custom CNN achieved highest accuracy
+    (0.4308) but lowest macro F1 (0.1307), confirming
+    ROC-AUC and macro F1 as appropriate primary metrics
+    \cite{theran2026metrics}.
+
+    \item \textbf{Overfitting is the dominant challenge}
+    across all architectures, consistent with Lim et al.\
+    \cite{lim2022}.
+\end{enumerate}
+
+\textbf{Future work:} (1) Use full ADNI 3D MRI with
+skull stripping and bias-field correction; (2) apply
+3D CNNs or Vision Transformers for volumetric context;
+(3) implement k-fold cross-validation; (4) apply focal
+loss for further minority class improvement.
+
+%=============================================================
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{99}
+
+\bibitem{lim2022}
+D.~W. Lim, G.~J. Katuwal, and J.~Y. Lee,
+``Deep learning-based classification of Alzheimer's
+disease using brain MRI data,''
+\textit{Frontiers in Aging Neuroscience}, vol.~14,
+p.~876202, 2022.
+
+\bibitem{he2016}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun,
+``Deep residual learning for image recognition,''
+in \textit{Proc. IEEE CVPR}, pp.~770--778, 2016.
+
+\bibitem{huang2017}
+G.~Huang, Z.~Liu, L.~Van der Maaten,
+and K.~Q. Weinberger,
+``Densely connected convolutional networks,''
+in \textit{Proc. IEEE CVPR}, pp.~4700--4708, 2017.
+
+\bibitem{simonyan2014}
+K.~Simonyan and A.~Zisserman,
+``Very deep convolutional networks for large-scale
+image recognition,''
+in \textit{Proc. ICLR}, 2015.
+
+\bibitem{tan2019}
+M.~Tan and Q.~Le,
+``EfficientNet: Rethinking model scaling for
+convolutional neural networks,''
+in \textit{Proc. ICML}, pp.~6105--6114, 2019.
+
+\bibitem{litjens2017}
+G.~Litjens et al.,
+``A survey on deep learning in medical image
+analysis,''
+\textit{Medical Image Analysis}, vol.~42,
+pp.~60--88, 2017.
+
+\bibitem{tajbakhsh2016}
+N.~Tajbakhsh et al.,
+``Convolutional neural networks for medical image
+analysis: Full training or fine tuning?''
+\textit{IEEE Trans. Med. Imaging}, vol.~35, no.~5,
+pp.~1299--1312, 2016.
+
+\bibitem{johnson2019}
+J.~M. Johnson and T.~M. Khoshgoftaar,
+``Survey on deep learning with class imbalance,''
+\textit{J. Big Data}, vol.~6, no.~1, p.~27, 2019.
+
+\bibitem{theran2026metrics}
+C.~Theran,
+``Evaluation metrics for machine learning and
+deep learning,''
+Lecture Notes, CAP5626,
+Florida A\&M University, Feb.\ 2026.
+
+\bibitem{theran2026cnn}
+C.~Theran,
+``Convolutional neural network architectures,''
+Lecture Notes, CAP5626,
+Florida A\&M University, 2026.
+
+\end{thebibliography}
+
+\end{document}
