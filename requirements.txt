@@ -11,7 +11,7 @@ scikit-learn==1.6.1
 seaborn==0.13.2
 sklearn-pandas==2.2.0
 timm==1.0.26
-torch==2.10.0+cu128
+torch==2.11.0
 torchao==0.10.0
 torchaudio==2.10.0+cu128
 torchcodec==0.10.0+cu128
