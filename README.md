@@ -105,3 +105,18 @@ scikit-learn==1.6.1, matplotlib==3.10.0
 Lim et al. (2022). Deep learning-based classification of
 Alzheimer's disease using brain MRI data.
 Frontiers in Aging Neuroscience, 14, 876202.
+
+
+---
+
+## Presentation Recording
+
+[![Watch Presentation](https://img.shields.io/badge/Watch-Presentation-red?logo=google-drive)](https://drive.google.com/file/d/1pafjN0PHeCLifE6mCdeYPaVeVpfLNqET/view?usp=sharing)
+
+**Direct link:** https://drive.google.com/file/d/1pafjN0PHeCLifE6mCdeYPaVeVpfLNqET/view?usp=sharing
+
+- **Duration:** ~16 minutes
+- **Content:** Dataset · Preprocessing · Augmentation ·
+  5 CNN Architectures · Overfitting Analysis ·
+  Results · Scientific Conclusions
+- **Best model:** DenseNet121 — ROC-AUC 0.6535
